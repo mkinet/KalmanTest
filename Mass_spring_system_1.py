@@ -30,24 +30,54 @@ def generate_signals(k,m,noise,npoints,dt=0.1):
     meas = add_noise(sol,noise)
     return sol,meas
 
-def KalmanFilterParameters(k,m,dt):
-    F=np.array([[1,dt],[-k*dt/m,1]])
+def InitKalmanFilter(k,m,dt,x0,sig0,noise):
+    transition_matrix=np.array([[1,dt],[-k*dt/m,1]]) #state transition matrix
+    observation_matrix=np.array([[1],[0]]).T # observation matrix
+    initial_transition_covariance = np.eye(2)*1e-1
+    initial_observation_covariance = np.array([0.5**2])
+    transition_offsets=np.zeros((2,1))
+    observation_offset=np.zeros(1)
+    initial_state_mean=np.array([x0,0]) # initial estimation
+    initial_state_covariance= np.eye(2)*sig0 # initial state variance
+    kf = KalmanFilter(transition_matrices=transition_matrix,
+                      observation_matrices=observation_matrix,
+                      transition_covariance=initial_transition_covariance,
+                      observation_covariance=initial_observation_covariance,
+                      initial_state_mean=initial_state_mean,
+                      initial_state_covariance=initial_state_covariance
+                      )
 
+    return kf
 
-def RunKalmanFilter(measurements,kf):
-    pass
+def RunKalmanFilter(nsteps,ndim,measurements,kf):
+    filtered_state_means = np.zeros((nsteps, ndim))
+    filtered_state_covariances = np.zeros((nsteps, ndim, ndim))
+    for t in range(nsteps - 1):
+        if t == 0:
+            filtered_state_means[t] = kf.initial_state_mean
+            filtered_state_covariances[t] = kf.initial_state_covariance
+        filtered_state_means[t + 1], filtered_state_covariances[t + 1] = (
+            kf.filter_update(filtered_state_means[t],
+                             filtered_state_covariances[t],
+                             measurements[t + 1]
+                             )
+            )
+
+    return filtered_state_means
 
 if __name__ == '__main__':
-    k=10
-    m=3
-    npoints=100
-    noise=0.25
-    dt=0.1
-    true,meas = generate_signals(k,m,noise,npoints,dt)
-    KalmanFilterParameters(k,m,dt)
+    k=5
+    m=10
+    nsteps=1000
+    noise=0.3
+    dt=0.5
+    true,meas = generate_signals(k, m, noise, nsteps, dt)
+    kf = InitKalmanFilter(k,m,dt,x0=1.0,sig0=0.1,noise=noise)
+    est = RunKalmanFilter(nsteps,ndim=2,measurements=meas,kf=kf)
     plt.figure()
     lines_true = plt.plot(true, color='b')
+    lines_filter = plt.plot(est[:,0],color = 'r')
     dots_meas = plt.plot(meas, 'go', )
-    plt.legend((lines_true[0], dots_meas[0]),
-              ('true', 'measures'), loc='lower right')
+    plt.legend((lines_true[0], lines_filter[0], dots_meas[0]),
+              ('true', 'estimate', 'measures'), loc='lower right')
     plt.show()
